@@ -1,0 +1,90 @@
+---
+title: "Mpox delay distributions"
+output: github_document
+link-citations: true
+bibliography: mpox.bib
+csl: https://raw.githubusercontent.com/citation-style-language/styles/master/apa-numeric-superscript-brackets.csl
+vignette: >
+  %\VignetteIndexEntry{Mpox delay distributions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Setup
+
+```{r setup}
+library("epidist")
+library("dplyr")
+```
+
+# Data
+
+We use data from @marziano2024incub_i:
+
+```{r}
+case_id <- seq_len(15)
+incubation_period <- as.integer(c(5, 6, 7, 8, 8, 8, 9, 9, 10, 10, 11, 12, 13, 14, 14))
+ip <- data.frame(case_id, incubation_period)
+```
+
+We first assume an offset of 4 days as in @marziano2024incub_i:
+
+```r
+ip_offset <- ip |>
+  mutate(incubation_period = incubation_period - 4L)
+```
+
+Next we prepare for fitting.
+We don't know the primary event time so we can only account for censoring here, not truncation
+
+```r
+ip_offset_epidist <- ip_offset |>
+  mutate(
+    delay_daily = incubation_period,
+    delay_lwr = incubation_period - 1,
+    delay_upr = incubation_period + 1,
+    censored = "interval"
+  )
+```
+
+# Models
+
+As in the paper, fit lognormal, weibull and gamma, here with and without censoring adjustment.
+
+```r
+lognormal <- naive_delay(data = ip_offset_epidist)
+censored_lognormal <- censoring_adjusted_delay(data = ip_offset_epidist)
+weibull <- naive_delay(
+  brms::bf(delay_daily ~ 1, shape ~ 1), ip_offset_epidist, family = "weibull"
+)
+censored_weibull <- censoring_adjusted_delay(
+  brms::bf(delay_lwr | cens(censored, delay_upr) ~ 1, shape ~ 1), ip_offset_epidist, family = "weibull"
+)
+gamma <- naive_delay(
+  brms::bf(delay_daily ~ 1, shape ~ 1) ~ 1, data = ip_offset_epidist, family = "gamma"
+)
+censored_gamma <- censoring_adjusted_delay(
+  brms::bf(delay_lwr | cens(censored, delay_upr) ~ 1, shape ~ 1), data = ip_offset_epidist, family = "gamma"
+)
+```
+
+Model comparison
+
+```{r, include = TRUE}
+loo(
+  lognormal,
+  censored_lognormal,
+  weibull,
+  censored_weibull,
+  gamma,
+  censored_gamma
+)
+```
+
+Estimates using censored gamma
+
+```{r, include = TRUE}
+draws <- exp(as_draws_df(censored_gamma)$Intercept)
+signif(mean(draws), 2)
+signif(quantile(draws, c(0.025, 0.975)), 2)
+```

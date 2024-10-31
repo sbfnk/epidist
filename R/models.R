@@ -31,7 +31,6 @@ censoring_adjusted_delay <- function(
   formula = brms::bf(
     delay_lwr | cens(censored, delay_upr) ~ 1, sigma ~ 1
   ), data, fn = brms::brm, family = "lognormal", ...) {
-  data <- pad_zero(data)
   fn(
     formula, data = data, family = family, backend = "cmdstanr", ...
   )
